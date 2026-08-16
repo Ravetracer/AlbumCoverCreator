@@ -1,0 +1,11 @@
+node_modules
+dist
+public/covers-thumb
+public/covers-manifest.json
+tsconfig.tsbuildinfo
+*.local
+.DS_Store
+
+# Reference material from other projects (not part of AlbumCoverCreator)
+\!dev/
+\!dev2/
