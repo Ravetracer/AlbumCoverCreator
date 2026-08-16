@@ -10,6 +10,22 @@ This project uses a simple `X.Y.Z` scheme:
 - **Y** — new feature
 - **Z** — bug fixes
 
+## [0.3.0] — 2026-08-16
+
+### Added
+
+- **Restore-images modal.** Uploaded images are held as in-memory URLs that
+  don't survive a page reload, so a project auto-restored from the browser would
+  come back with missing images. On load, if the restored project references such
+  images, a modal now lists them and lets the user re-select the original files
+  from disk (per-image, or a bulk picker that matches files by name) to restore
+  them. Built-in `/covers` backgrounds load normally and are never listed.
+- **Self-contained project export.** Saving a project (JSON) now embeds uploaded
+  images as base64 data URLs, so the exported file keeps its images and can be
+  reopened later or on another machine. Built-in `/covers` paths stay as
+  references. (localStorage autosave still uses lightweight in-memory URLs to
+  respect the storage quota — that path is covered by the restore modal above.)
+
 ## [0.2.3] — 2026-08-16
 
 ### Added

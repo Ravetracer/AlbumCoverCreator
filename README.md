@@ -125,9 +125,11 @@ effects.
 
 ## Known limitations
 
-- Uploaded images use in-memory object URLs and are **not** restored after a hard
-  refresh (only `/covers` paths persist). Saved project files reference the same
-  URLs.
+- Uploaded images use in-memory object URLs that don't survive a page reload, so
+  the localStorage autosave can't restore them automatically. On load, a modal
+  prompts you to re-select those files from disk. To keep images permanently, use
+  **Save** — the exported JSON embeds uploaded images so the project is
+  self-contained.
 - The production bundle is dominated by Konva; code-splitting is a future task.
 
 ## License

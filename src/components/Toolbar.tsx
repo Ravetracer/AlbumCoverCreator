@@ -38,6 +38,7 @@ export function Toolbar({
   const [format, setFormat] = useState<ExportFormat>('png')
   const [edge, setEdge] = useState(3000)
   const [exporting, setExporting] = useState(false)
+  const [saving, setSaving] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
   const projectRef = useRef<HTMLInputElement>(null)
 
@@ -151,7 +152,20 @@ export function Toolbar({
       </div>
 
       <div className="tb-group">
-        <button onClick={() => downloadProject(doc, layers)}>Save</button>
+        <button
+          disabled={saving}
+          onClick={async () => {
+            if (saving) return
+            setSaving(true)
+            try {
+              await downloadProject(doc, layers)
+            } finally {
+              setSaving(false)
+            }
+          }}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
         <button onClick={() => projectRef.current?.click()}>Open</button>
         <button
           className="danger"
