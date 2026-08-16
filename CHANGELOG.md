@@ -10,6 +10,16 @@ This project uses a simple `X.Y.Z` scheme:
 - **Y** — new feature
 - **Z** — bug fixes
 
+## [0.2.2] — 2026-08-16
+
+### Fixed
+
+- Effects on transparent images no longer paint the transparent regions black.
+  Halftone, ASCII and Pixelate read the source **alpha**: transparent pixels
+  (which are `rgba(0,0,0,0)`, i.e. luma 0 → previously the largest/darkest
+  marks) are now skipped in "Transparent BG" mode and filled with the background
+  colour otherwise. Cell colour averaging is alpha-weighted so edges don't darken.
+
 ## [0.2.1] — 2026-08-16
 
 ### Added

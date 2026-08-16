@@ -65,31 +65,43 @@ function applyBrightnessContrast(
 }
 
 // ---- averaging into a coarse cell grid -------------------------------------
+// `buf` holds the alpha-weighted average colour per cell (so transparent pixels,
+// which are usually rgba(0,0,0,0), don't drag the colour toward black), and
+// `alpha` holds the mean alpha (0..255) per cell so drawing effects can keep
+// transparent regions transparent instead of painting them black.
 function averageCells(
   data: Uint8ClampedArray,
   W: number,
   H: number,
   cell: number,
-): { cols: number; rows: number; buf: Float32Array } {
+): { cols: number; rows: number; buf: Float32Array; alpha: Float32Array } {
   const cols = Math.ceil(W / cell)
   const rows = Math.ceil(H / cell)
   const buf = new Float32Array(cols * rows * 3)
+  const alpha = new Float32Array(cols * rows)
   for (let cy = 0; cy < rows; cy++) {
     for (let cx = 0; cx < cols; cx++) {
-      let r = 0, g = 0, b = 0, n = 0
+      let r = 0, g = 0, b = 0, aSum = 0, n = 0
       const x1 = Math.min((cx + 1) * cell, W)
       const y1 = Math.min((cy + 1) * cell, H)
       for (let y = cy * cell; y < y1; y++) {
         for (let x = cx * cell; x < x1; x++) {
           const i = (y * W + x) * 4
-          r += data[i]; g += data[i + 1]; b += data[i + 2]; n++
+          const a = data[i + 3]
+          r += data[i] * a; g += data[i + 1] * a; b += data[i + 2] * a
+          aSum += a; n++
         }
       }
       const k = (cy * cols + cx) * 3
-      buf[k] = r / n; buf[k + 1] = g / n; buf[k + 2] = b / n
+      if (aSum > 0) {
+        buf[k] = r / aSum; buf[k + 1] = g / aSum; buf[k + 2] = b / aSum
+      } else {
+        buf[k] = 0; buf[k + 1] = 0; buf[k + 2] = 0
+      }
+      alpha[cy * cols + cx] = n > 0 ? aSum / n : 0
     }
   }
-  return { cols, rows, buf }
+  return { cols, rows, buf, alpha }
 }
 
 // =====================  PIXELATE  ===========================================
@@ -103,17 +115,28 @@ export function makePixelate(p: Params): PixelFilter {
   return (imageData) => {
     const { data, width: W, height: H } = imageData
     const cell = unitToPx(units, W)
-    const { cols, rows, buf } = averageCells(data, W, H, cell)
+    const { cols, rows, buf, alpha } = averageCells(data, W, H, cell)
 
     if (shape === 'square' && gap === 0) {
-      // Fast path: flat mosaic.
+      // Fast path: flat mosaic. Each block takes the cell's average alpha so a
+      // transparent PNG stays transparent (transparent mode) or fills with the
+      // background colour where it was transparent (opaque mode).
       for (let y = 0; y < H; y++) {
         const cy = Math.min(rows - 1, (y / cell) | 0)
         for (let x = 0; x < W; x++) {
           const cx = Math.min(cols - 1, (x / cell) | 0)
-          const k = (cy * cols + cx) * 3
+          const ci = cy * cols + cx
+          const k = ci * 3
           const i = (y * W + x) * 4
-          data[i] = buf[k]; data[i + 1] = buf[k + 1]; data[i + 2] = buf[k + 2]
+          const ca = alpha[ci]
+          if (transparent) {
+            data[i] = buf[k]; data[i + 1] = buf[k + 1]; data[i + 2] = buf[k + 2]
+            data[i + 3] = ca
+          } else if (ca < 5) {
+            data[i] = bg[0]; data[i + 1] = bg[1]; data[i + 2] = bg[2]; data[i + 3] = 255
+          } else {
+            data[i] = buf[k]; data[i + 1] = buf[k + 1]; data[i + 2] = buf[k + 2]; data[i + 3] = 255
+          }
         }
       }
       return
@@ -130,13 +153,20 @@ export function makePixelate(p: Params): PixelFilter {
     const radius = (cell * (1 - gap)) / 2
     for (let cy = 0; cy < rows; cy++) {
       for (let cx = 0; cx < cols; cx++) {
-        const k = (cy * cols + cx) * 3
+        const ci = cy * cols + cx
+        // Skip cells that were transparent in the source (transparent mode) so
+        // they don't become solid coloured tiles.
+        const ca = transparent ? alpha[ci] / 255 : 1
+        if (ca < 0.02) continue
+        const k = ci * 3
+        ctx.globalAlpha = ca
         ctx.fillStyle = `rgb(${buf[k] | 0},${buf[k + 1] | 0},${buf[k + 2] | 0})`
         const midX = cx * cell + cell / 2
         const midY = cy * cell + cell / 2
         drawCellShape(ctx, shape, midX, midY, radius)
       }
     }
+    ctx.globalAlpha = 1
     const out = ctx.getImageData(0, 0, W, H).data
     data.set(out)
   }
@@ -309,7 +339,7 @@ export function makeAscii(p: Params): PixelFilter {
   return (imageData) => {
     const { data, width: W, height: H } = imageData
     const cell = unitToPx(unit, W)
-    const { cols, rows, buf } = averageCells(data, W, H, cell)
+    const { cols, rows, buf, alpha } = averageCells(data, W, H, cell)
 
     const canvas = document.createElement('canvas')
     canvas.width = W; canvas.height = H
@@ -324,10 +354,15 @@ export function makeAscii(p: Params): PixelFilter {
 
     for (let cy = 0; cy < rows; cy++) {
       for (let cx = 0; cx < cols; cx++) {
-        const k = (cy * cols + cx) * 3
+        const idx = cy * cols + cx
+        // Keep transparent source regions transparent.
+        const ca = transparent ? alpha[idx] / 255 : 1
+        if (ca < 0.02) continue
+        const k = idx * 3
         const l = luma(buf[k], buf[k + 1], buf[k + 2]) / 255
         const ch = ramp[Math.min(ramp.length - 1, (l * (ramp.length - 1)) | 0)]
         if (ch === ' ') continue
+        ctx.globalAlpha = ca
         ctx.fillStyle =
           colorMode === 'source'
             ? `rgb(${buf[k] | 0},${buf[k + 1] | 0},${buf[k + 2] | 0})`
@@ -335,6 +370,7 @@ export function makeAscii(p: Params): PixelFilter {
         ctx.fillText(ch, cx * cell + cell / 2, cy * cell)
       }
     }
+    ctx.globalAlpha = 1
     data.set(ctx.getImageData(0, 0, W, H).data)
   }
 }
@@ -542,7 +578,7 @@ export function makeHalftone(p: Params): PixelFilter {
   return (imageData) => {
     const { data, width: W, height: H } = imageData
     const cell = unitToPx(unit, W)
-    const { cols, rows, buf } = averageCells(data, W, H, cell)
+    const { cols, rows, buf, alpha } = averageCells(data, W, H, cell)
     const canvas = document.createElement('canvas')
     canvas.width = W; canvas.height = H
     const ctx = canvas.getContext('2d')!
@@ -553,10 +589,16 @@ export function makeHalftone(p: Params): PixelFilter {
     const maxR = (cell / 2) * Math.SQRT2
     for (let cy = 0; cy < rows; cy++) {
       for (let cx = 0; cx < cols; cx++) {
-        const k = (cy * cols + cx) * 3
+        const idx = cy * cols + cx
+        // Skip cells that were transparent in the source so a transparent PNG
+        // stays transparent instead of becoming a field of black dots.
+        const ca = transparent ? alpha[idx] / 255 : 1
+        if (ca < 0.02) continue
+        const k = idx * 3
         const l = luma(buf[k], buf[k + 1], buf[k + 2]) / 255
         const r = maxR * (1 - l)
         if (r < 0.3) continue
+        ctx.globalAlpha = ca
         ctx.fillStyle =
           colorMode === 'source'
             ? `rgb(${buf[k] | 0},${buf[k + 1] | 0},${buf[k + 2] | 0})`
@@ -566,6 +608,7 @@ export function makeHalftone(p: Params): PixelFilter {
         ctx.fill()
       }
     }
+    ctx.globalAlpha = 1
     data.set(ctx.getImageData(0, 0, W, H).data)
   }
 }
