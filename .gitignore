@@ -9,3 +9,7 @@ tsconfig.tsbuildinfo
 # Reference material from other projects (not part of AlbumCoverCreator)
 \!dev/
 \!dev2/
+
+# Stray pnpm artifacts (this is an npm project — see package-lock.json)
+pnpm-lock.yaml
+pnpm-workspace.yaml
