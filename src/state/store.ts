@@ -141,7 +141,7 @@ function normalizeLayer(raw: Layer): Layer {
   }
   if (l.type === 'shape') {
     const s = l as ShapeLayer
-    return { ...s, blur: s.blur ?? 0, chromAmount: s.chromAmount ?? 0, chromAngle: s.chromAngle ?? 0 }
+    return { ...s, blur: s.blur ?? 0, chromAmount: s.chromAmount ?? 0, chromAngle: s.chromAngle ?? 0, lineRound: s.lineRound ?? false }
   }
   if (l.type === 'flare') {
     const f = l as FlareLayer
@@ -281,6 +281,7 @@ export const useEditor = create<EditorState>()(
             starInner: 0.5,
             startWidth: 30,
             endWidth: 2,
+            lineRound: false,
             glowEnabled: false,
             glowColor: '#4f8cff',
             glowBlur: 40,

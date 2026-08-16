@@ -152,6 +152,7 @@ export interface ShapeLayer extends BaseLayer {
   starInner: number // star inner/outer ratio 0..1
   startWidth: number // line: width at start
   endWidth: number // line: width at end
+  lineRound: boolean // line: rounded (semicircular) end caps instead of flat
   glowEnabled: boolean
   glowColor: string
   glowBlur: number

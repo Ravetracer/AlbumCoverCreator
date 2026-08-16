@@ -443,6 +443,7 @@ function ShapeControls({ layer, onChange }: { layer: ShapeLayer; onChange: (id: 
             <>
               <Slider label="Start Width" value={layer.startWidth} min={1} max={300} step={1} def={30} onChange={(v) => set({ startWidth: v })} />
               <Slider label="End Width" value={layer.endWidth} min={1} max={300} step={1} def={2} onChange={(v) => set({ endWidth: v })} />
+              <Toggle label="Rounded ends" checked={layer.lineRound} onChange={(v) => set({ lineRound: v })} />
             </>
           )}
         </Section>

@@ -10,6 +10,14 @@ This project uses a simple `X.Y.Z` scheme:
 - **Y** — new feature
 - **Z** — bug fixes
 
+## [0.2.1] — 2026-08-16
+
+### Added
+
+- **Rounded ends** option for line shapes: semicircular caps at both ends instead
+  of the flat cut, enabling capsule/pill shapes (works with taper and
+  fade-to-transparent gradients).
+
 ## [0.2.0] — 2026-08-16
 
 Corrections and additions pass.

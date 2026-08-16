@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Group, Rect, Ellipse, RegularPolygon, Star, Line } from 'react-konva'
+import { Group, Rect, Ellipse, RegularPolygon, Star, Line, Path } from 'react-konva'
 import Konva from 'konva'
 import type { ShapeLayer } from '../../types'
 import { useEditor } from '../../state/store'
@@ -50,7 +50,7 @@ export function ShapeNode({ layer, onSelect, registerRef }: Props) {
     layer.fill, layer.gradFrom, layer.gradTo, layer.gradAngle,
     layer.strokeEnabled, layer.stroke, layer.strokeWidth, layer.cornerRadius,
     layer.sides, layer.starPoints, layer.starInner, layer.startWidth,
-    layer.endWidth, layer.glowEnabled, layer.glowColor, layer.glowBlur,
+    layer.endWidth, layer.lineRound, layer.glowEnabled, layer.glowColor, layer.glowBlur,
   ])
   const glow = glowProps(layer)
   const stroke = strokeProps(layer)
@@ -93,13 +93,27 @@ export function ShapeNode({ layer, onSelect, registerRef }: Props) {
     case 'line': {
       const sw = layer.startWidth
       const ew = layer.endWidth
-      const points = [
-        0, h / 2 - sw / 2,
-        w, h / 2 - ew / 2,
-        w, h / 2 + ew / 2,
-        0, h / 2 + sw / 2,
-      ]
-      shape = <Line points={points} closed lineJoin="round" {...common} />
+      const cy = h / 2
+      if (layer.lineRound) {
+        // Tapered body with semicircular caps: draw each end as a half-circle
+        // arc (radius = that end's half-width) bulging outward.
+        const sr = sw / 2
+        const er = ew / 2
+        const data =
+          `M 0 ${cy - sr} L ${w} ${cy - er} ` +
+          `A ${er} ${er} 0 0 1 ${w} ${cy + er} ` +
+          `L 0 ${cy + sr} ` +
+          `A ${sr} ${sr} 0 0 1 0 ${cy - sr} Z`
+        shape = <Path data={data} {...common} />
+      } else {
+        const points = [
+          0, cy - sw / 2,
+          w, cy - ew / 2,
+          w, cy + ew / 2,
+          0, cy + sw / 2,
+        ]
+        shape = <Line points={points} closed lineJoin="round" {...common} />
+      }
       break
     }
   }
