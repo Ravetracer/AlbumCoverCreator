@@ -10,6 +10,15 @@ This project uses a simple `X.Y.Z` scheme:
 - **Y** — new feature
 - **Z** — bug fixes
 
+## [0.2.3] — 2026-08-16
+
+### Added
+
+- Halftone effect gains an **Invert (light = dots)** toggle. Classic halftone
+  sizes dots by darkness, so a light-coloured logo on a transparent background
+  produces no dots and appears to vanish; inverting makes bright areas the large
+  dots so light-on-transparent artwork renders correctly.
+
 ## [0.2.2] — 2026-08-16
 
 ### Fixed

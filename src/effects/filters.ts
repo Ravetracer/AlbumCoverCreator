@@ -575,6 +575,9 @@ export function makeHalftone(p: Params): PixelFilter {
   const ink = str(p, 'ink', '#111111')
   const bg = str(p, 'background', '#f5f5f0')
   const transparent = bool(p, 'transparent', false)
+  // Classic halftone sizes dots by darkness (dark = big dot). Invert makes
+  // bright areas the big dots, so light-on-transparent logos stay visible.
+  const invert = bool(p, 'invert', false)
   return (imageData) => {
     const { data, width: W, height: H } = imageData
     const cell = unitToPx(unit, W)
@@ -596,7 +599,7 @@ export function makeHalftone(p: Params): PixelFilter {
         if (ca < 0.02) continue
         const k = idx * 3
         const l = luma(buf[k], buf[k + 1], buf[k + 2]) / 255
-        const r = maxR * (1 - l)
+        const r = maxR * (invert ? l : 1 - l)
         if (r < 0.3) continue
         ctx.globalAlpha = ca
         ctx.fillStyle =

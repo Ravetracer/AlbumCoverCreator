@@ -131,6 +131,7 @@ export const EFFECT_DEFS: EffectDef[] = [
     label: 'Halftone / Magazine',
     params: [
       { key: 'dotSize', label: 'Dot Size', kind: 'range', min: 3, max: 40, step: 1, default: 10 },
+      { key: 'invert', label: 'Invert (light = dots)', kind: 'toggle', default: false },
       { key: 'color', label: 'Color', kind: 'select', default: 'mono', options: [
         { value: 'mono', label: 'Monochrome' },
         { value: 'source', label: 'From Image' },
