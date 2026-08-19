@@ -31,8 +31,13 @@ export function Toolbar({
   const addShapeLayer = useEditor((s) => s.addShapeLayer)
   const addFlareLayer = useEditor((s) => s.addFlareLayer)
   const addParticleLayer = useEditor((s) => s.addParticleLayer)
+  const addAdjustLayer = useEditor((s) => s.addAdjustLayer)
   const loadProject = useEditor((s) => s.loadProject)
   const reset = useEditor((s) => s.reset)
+  const undo = useEditor((s) => s.undo)
+  const redo = useEditor((s) => s.redo)
+  const canUndo = useEditor((s) => s.past.length > 0)
+  const canRedo = useEditor((s) => s.future.length > 0)
 
   const [showBg, setShowBg] = useState(false)
   const [format, setFormat] = useState<ExportFormat>('png')
@@ -74,6 +79,9 @@ export function Toolbar({
 
   const doExport = () => {
     if (!stageRef.current || exporting) return
+    // Leave mask-edit mode so the on-canvas mask overlay isn't baked into the
+    // export; the double rAF below lets React/Konva repaint first.
+    useEditor.getState().setMaskEdit(null)
     setExporting(true)
     // Defer so the button repaints as "Exporting…" before the (heavy,
     // synchronous) full-resolution render blocks the main thread.
@@ -90,7 +98,14 @@ export function Toolbar({
 
   return (
     <div className="toolbar">
-      <span className="brand">AlbumCoverCreator</span>
+      <span className="brand">
+        <img className="brand-logo" src="/album_wizard_logo.png" alt="Album Wizard" />
+      </span>
+
+      <div className="tb-group">
+        <button title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={undo}>↶ Undo</button>
+        <button title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}>↷ Redo</button>
+      </div>
 
       <div className="tb-group">
         <button onClick={() => setShowBg(true)}>Background</button>
@@ -113,6 +128,7 @@ export function Toolbar({
         </select>
         <button onClick={addFlareLayer}>Flare</button>
         <button onClick={addParticleLayer}>Particles</button>
+        <button onClick={addAdjustLayer} title="Grade / add effects over all layers below">Adjust</button>
       </div>
 
       <div className="tb-group">

@@ -19,9 +19,34 @@ function estimateWidth(layer: TextLayer): number {
   return Math.max(40, layer.text.length * layer.fontSize * 0.55 + layer.letterSpacing * layer.text.length)
 }
 
-// Quadratic bezier arc; positive curve bulges upward (smile).
+// Baseline path the text is drawn along. Positive curve bulges upward.
 function curvePath(layer: TextLayer): string {
   const w = estimateWidth(layer)
+  const style = layer.curveStyle ?? 'arc'
+
+  if (style === 'wave') {
+    const amp = (layer.curve / 100) * layer.fontSize * 0.9
+    const q = w / 4
+    return `M ${-w / 2},0 C ${-w / 2 + q},${-amp} ${-q},${-amp} 0,0 C ${q},${amp} ${w / 2 - q},${amp} ${w / 2},0`
+  }
+
+  if (style === 'circle') {
+    const amt = Math.abs(layer.curve) / 100
+    if (amt < 0.001) return `M ${-w / 2},0 L ${w / 2},0`
+    const R = w / (Math.PI * amt)
+    const theta = Math.min(w / R, Math.PI * 1.9)
+    const up = layer.curve >= 0
+    const half = theta / 2
+    const sx = -R * Math.sin(half)
+    const sag = R * (1 - Math.cos(half))
+    const sy = up ? sag : -sag
+    const ex = R * Math.sin(half)
+    const large = theta > Math.PI ? 1 : 0
+    const sweep = up ? 0 : 1
+    return `M ${sx},${sy} A ${R} ${R} 0 ${large} ${sweep} ${ex},${sy}`
+  }
+
+  // arc (default): quadratic bezier
   const cpY = -(layer.curve / 100) * w * 0.5
   return `M ${-w / 2},0 Q 0,${cpY} ${w / 2},0`
 }
@@ -73,7 +98,7 @@ export function TextNode({ layer, onSelect, registerRef }: Props) {
   }, [
     fontReady, applyFilters, layer.text, layer.fontSize,
     layer.fill, layer.letterSpacing, layer.lineHeight, layer.width, layer.align,
-    layer.curve, layer.strokeEnabled, layer.stroke, layer.strokeWidth,
+    layer.curve, layer.curveStyle, layer.strokeEnabled, layer.stroke, layer.strokeWidth,
     layer.glowEnabled, layer.glowColor, layer.glowBlur,
   ])
 

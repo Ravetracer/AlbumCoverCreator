@@ -9,13 +9,30 @@ export function LayerPanel() {
   const removeLayer = useEditor((s) => s.removeLayer)
   const duplicateLayer = useEditor((s) => s.duplicateLayer)
   const moveLayer = useEditor((s) => s.moveLayer)
-  const reorderLayer = useEditor((s) => s.reorderLayer)
+  const setLayerOrder = useEditor((s) => s.setLayerOrder)
 
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  // Which edge of the hovered row we'd drop against, in display order.
+  const [overPos, setOverPos] = useState<'above' | 'below'>('above')
 
   // Show top layer first (reverse of stacking order).
   const rows = [...layers].reverse()
+
+  // Commit a drop: rebuild the display order (top→bottom), then hand the store
+  // the bottom→top stacking order. Works in either drag direction and lets a
+  // layer land at the very top or very bottom of the list.
+  const commitDrop = () => {
+    if (dragId && overId && dragId !== overId) {
+      const displayIds = rows.map((r) => r.id).filter((id) => id !== dragId)
+      let insertAt = displayIds.indexOf(overId)
+      if (overPos === 'below') insertAt += 1
+      displayIds.splice(insertAt, 0, dragId)
+      setLayerOrder([...displayIds].reverse())
+    }
+    setDragId(null)
+    setOverId(null)
+  }
 
   return (
     <div className="panel">
@@ -27,7 +44,7 @@ export function LayerPanel() {
         {rows.map((l) => (
           <div
             key={l.id}
-            className={`layer-row ${selectedId === l.id ? 'sel' : ''} ${overId === l.id ? 'drop-target' : ''} ${dragId === l.id ? 'dragging' : ''}`}
+            className={`layer-row ${selectedId === l.id ? 'sel' : ''} ${overId === l.id ? `drop-${overPos}` : ''} ${dragId === l.id ? 'dragging' : ''}`}
             draggable
             onClick={() => select(l.id)}
             onDragStart={(e) => {
@@ -36,13 +53,16 @@ export function LayerPanel() {
             }}
             onDragOver={(e) => {
               e.preventDefault()
+              // Drop above or below the target depending on which half of the
+              // row the pointer is over.
+              const rect = e.currentTarget.getBoundingClientRect()
+              const pos = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below'
               if (l.id !== overId) setOverId(l.id)
+              if (pos !== overPos) setOverPos(pos)
             }}
             onDrop={(e) => {
               e.preventDefault()
-              if (dragId && dragId !== l.id) reorderLayer(dragId, l.id)
-              setDragId(null)
-              setOverId(null)
+              commitDrop()
             }}
             onDragEnd={() => { setDragId(null); setOverId(null) }}
           >

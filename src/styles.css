@@ -31,7 +31,10 @@ body {
   border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
 }
-.brand { font-weight: 700; letter-spacing: 0.3px; color: var(--accent); }
+/* Negative margins cancel the toolbar's vertical padding so the logo fills the
+   full header height, edge to edge. */
+.brand { display: inline-flex; align-items: center; margin: -8px 0; }
+.brand-logo { height: 120px; width: auto; display: block; }
 .tb-group { display: flex; align-items: center; gap: 6px; }
 .tb-group.right { margin-left: auto; }
 .tb-group label { color: var(--muted); font-size: 11px; text-transform: uppercase; }
@@ -83,7 +86,8 @@ body {
 .layer-row:hover { background: var(--panel-2); }
 .layer-row.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .layer-row.dragging { opacity: 0.4; }
-.layer-row.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
+.layer-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+.layer-row.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
 .drag-grip { color: var(--muted); cursor: grab; font-size: 12px; user-select: none; }
 .layer-row .icon-btn { font-size: 12px; line-height: 1; }
 .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

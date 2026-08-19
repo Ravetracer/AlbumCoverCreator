@@ -22,9 +22,21 @@ export function exportStage(
   // Re-cache each at full natural resolution so the export is sharp; effects
   // are resolution independent, so the look is unchanged. Covers image layers
   // and blurred shape groups.
-  const cachedNodes = (stage.find('Image, Group, Text, TextPath') as Konva.Node[]).filter(
+  // All nodes that hold a cache: filtered nodes (image/adjust/text) plus the
+  // self-mask groups (cached for compositing, no filters). Adjustment and mask
+  // groups wrap already-cached children, so cache deepest-first — otherwise a
+  // parent group would snapshot stale (edit-resolution) child content.
+  const filtered = (stage.find('Image, Group, Text, TextPath') as Konva.Node[]).filter(
     (n) => n.filters()?.length,
   )
+  const maskGroups = stage.find('.mask-group') as Konva.Node[]
+  const depth = (n: Konva.Node) => {
+    let d = 0
+    let p = n.getParent()
+    while (p) { d++; p = p.getParent() }
+    return d
+  }
+  const cachedNodes = [...new Set([...filtered, ...maskGroups])].sort((a, b) => depth(b) - depth(a))
   for (const node of cachedNodes) cacheFull(node)
 
   // The stage is displayed at some scale; toDataURL's pixelRatio is relative to

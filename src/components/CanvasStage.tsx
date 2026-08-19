@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Stage, Layer as KonvaLayer, Rect, Transformer } from 'react-konva'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Stage, Layer as KonvaLayer, Line, Rect, Transformer } from 'react-konva'
 import Konva from 'konva'
 import { useEditor } from '../state/store'
 import { ImageNode } from './nodes/ImageNode'
@@ -7,6 +7,8 @@ import { TextNode } from './nodes/TextNode'
 import { ShapeNode } from './nodes/ShapeNode'
 import { FlareNode } from './nodes/FlareNode'
 import { ParticleNode } from './nodes/ParticleNode'
+import { MaskEditNode, MaskShape, SelfMaskGroup } from './nodes/MaskNode'
+import { AdjustGroup } from './nodes/AdjustNode'
 
 // Stage that always keeps the full document visible, scaled to fit the
 // available viewport area. The Konva stage is the real document size; we scale
@@ -19,14 +21,60 @@ export function CanvasStage({
   const doc = useEditor((s) => s.doc)
   const layers = useEditor((s) => s.layers)
   const selectedId = useEditor((s) => s.selectedId)
+  const maskEditId = useEditor((s) => s.maskEditId)
   const select = useEditor((s) => s.select)
   const addImageLayer = useEditor((s) => s.addImageLayer)
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const trRef = useRef<Konva.Transformer>(null)
   const nodeRefs = useRef<Map<string, Konva.Node>>(new Map())
+  const guideLayerRef = useRef<Konva.Layer>(null)
+  const vGuideRef = useRef<Konva.Line>(null)
+  const hGuideRef = useRef<Konva.Line>(null)
   const [display, setDisplay] = useState({ scale: 1, w: 0, h: 0 })
   const [dragOver, setDragOver] = useState(false)
+
+  // Snap a dragging node to the canvas edges/centre and draw guide lines. Done
+  // imperatively (no React state) so re-renders don't fight Konva mid-drag.
+  const onStageDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target
+    if (!node || node === node.getStage()) return
+    const layerNode = node.getLayer()
+    if (!layerNode) return
+    const box = node.getClientRect({ relativeTo: layerNode })
+    const thr = 6 / (display.scale || 1)
+    const W = doc.width
+    const H = doc.height
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+
+    const xTargets = [
+      { pos: 0, delta: -box.x },
+      { pos: W / 2, delta: W / 2 - cx },
+      { pos: W, delta: W - (box.x + box.width) },
+    ]
+    const yTargets = [
+      { pos: 0, delta: -box.y },
+      { pos: H / 2, delta: H / 2 - cy },
+      { pos: H, delta: H - (box.y + box.height) },
+    ]
+    const snapX = xTargets.find((t) => Math.abs(t.delta) <= thr)
+    const snapY = yTargets.find((t) => Math.abs(t.delta) <= thr)
+    if (snapX) node.x(node.x() + snapX.delta)
+    if (snapY) node.y(node.y() + snapY.delta)
+
+    const v = vGuideRef.current
+    const h = hGuideRef.current
+    if (v) { if (snapX) { v.points([snapX.pos, 0, snapX.pos, H]); v.visible(true) } else v.visible(false) }
+    if (h) { if (snapY) { h.points([0, snapY.pos, W, snapY.pos]); h.visible(true) } else h.visible(false) }
+    guideLayerRef.current?.batchDraw()
+  }
+
+  const clearGuides = () => {
+    vGuideRef.current?.visible(false)
+    hGuideRef.current?.visible(false)
+    guideLayerRef.current?.batchDraw()
+  }
 
   const registerRef = useCallback((id: string, node: Konva.Node | null) => {
     if (node) nodeRefs.current.set(id, node)
@@ -56,12 +104,24 @@ export function CanvasStage({
     const tr = trRef.current
     if (!tr) return
     const selected = layers.find((l) => l.id === selectedId)
+    // Editing an image mask: attach the transformer to the mask overlay and
+    // allow free (non-ratio) resizing.
+    const editingMask =
+      !!maskEditId && selected?.id === maskEditId && selected.mask?.type === 'image' && selected.mask.enabled
+    if (editingMask) {
+      const node = nodeRefs.current.get(`${maskEditId}__mask`)
+      tr.keepRatio(false)
+      tr.nodes(node ? [node] : [])
+      tr.getLayer()?.batchDraw()
+      return
+    }
     const transformable =
-      selected && !selected.locked && selected.type !== 'flare' && selected.type !== 'particle'
+      selected && !selected.locked && selected.type !== 'flare' && selected.type !== 'particle' && selected.type !== 'adjust'
     const node = transformable && selectedId ? nodeRefs.current.get(selectedId) : null
+    tr.keepRatio(true)
     tr.nodes(node ? [node] : [])
     tr.getLayer()?.batchDraw()
-  }, [selectedId, layers])
+  }, [selectedId, maskEditId, layers])
 
   // Hold Ctrl while rotating to snap the transformer to 45° increments.
   useEffect(() => {
@@ -105,6 +165,81 @@ export function CanvasStage({
 
   const ordered = useMemo(() => layers, [layers])
 
+  // A single layer's on-canvas node, wrapped for its mask if it has one.
+  const renderNode = (layer: (typeof ordered)[number]): React.ReactNode => {
+    const common = { onSelect: () => select(layer.id), registerRef }
+    let node: React.ReactNode = null
+    switch (layer.type) {
+      case 'image':
+        node = <ImageNode {...common} layer={layer} />
+        break
+      case 'text':
+        node = <TextNode {...common} layer={layer} />
+        break
+      case 'shape':
+        node = <ShapeNode {...common} layer={layer} />
+        break
+      case 'flare':
+        node = <FlareNode {...common} layer={layer} doc={doc} />
+        break
+      case 'particle':
+        node = <ParticleNode {...common} layer={layer} doc={doc} />
+        break
+      default:
+        return null
+    }
+
+    const mask = layer.mask
+    if (mask?.enabled && mask.type === 'image' && maskEditId === layer.id) {
+      return (
+        <Fragment key={layer.id}>
+          {node}
+          <MaskEditNode layer={layer} doc={doc} registerRef={registerRef} />
+        </Fragment>
+      )
+    }
+    if (mask?.enabled && mask.target === 'self') {
+      return (
+        <SelfMaskGroup key={layer.id} layer={layer} doc={doc}>
+          {node}
+        </SelfMaskGroup>
+      )
+    }
+    if (mask?.enabled && mask.target === 'below') {
+      return (
+        <Fragment key={layer.id}>
+          {node}
+          <MaskShape mask={mask} box={{ width: doc.width, height: doc.height }} />
+        </Fragment>
+      )
+    }
+    return <Fragment key={layer.id}>{node}</Fragment>
+  }
+
+  // Build the stack. An adjustment layer collapses everything accumulated below
+  // it into a filtered group, so its grade applies to all lower layers.
+  const renderStack = (() => {
+    let buffer: React.ReactNode[] = []
+    for (const layer of ordered) {
+      if (layer.type === 'adjust') {
+        const below = buffer
+        buffer = [
+          <AdjustGroup
+            key={layer.id}
+            layer={layer}
+            onSelect={() => select(layer.id)}
+            registerRef={registerRef}
+          >
+            {below}
+          </AdjustGroup>,
+        ]
+      } else {
+        buffer.push(renderNode(layer))
+      }
+    }
+    return buffer
+  })()
+
   return (
     <div
       className={`canvas-wrap${dragOver ? ' drag-over' : ''}`}
@@ -133,6 +268,8 @@ export function CanvasStage({
               select(null)
             }
           }}
+          onDragMove={onStageDragMove}
+          onDragEnd={clearGuides}
         >
           <KonvaLayer>
             <Rect
@@ -143,26 +280,7 @@ export function CanvasStage({
               height={doc.height}
               fill={doc.background}
             />
-            {ordered.map((layer) => {
-              const common = {
-                onSelect: () => select(layer.id),
-                registerRef,
-              }
-              switch (layer.type) {
-                case 'image':
-                  return <ImageNode key={layer.id} {...common} layer={layer} />
-                case 'text':
-                  return <TextNode key={layer.id} {...common} layer={layer} />
-                case 'shape':
-                  return <ShapeNode key={layer.id} {...common} layer={layer} />
-                case 'flare':
-                  return <FlareNode key={layer.id} {...common} layer={layer} doc={doc} />
-                case 'particle':
-                  return <ParticleNode key={layer.id} {...common} layer={layer} doc={doc} />
-                default:
-                  return null
-              }
-            })}
+            {renderStack}
             <Transformer
               ref={trRef}
               rotateEnabled
@@ -176,6 +294,11 @@ export function CanvasStage({
                 newBox.width < 10 || newBox.height < 10 ? oldBox : newBox
               }
             />
+          </KonvaLayer>
+          {/* Snap guide lines, drawn imperatively during drag. */}
+          <KonvaLayer ref={guideLayerRef} listening={false}>
+            <Line ref={vGuideRef} stroke="#ff3b81" strokeWidth={1} strokeScaleEnabled={false} dash={[6, 6]} visible={false} />
+            <Line ref={hGuideRef} stroke="#ff3b81" strokeWidth={1} strokeScaleEnabled={false} dash={[6, 6]} visible={false} />
           </KonvaLayer>
         </Stage>
       </div>

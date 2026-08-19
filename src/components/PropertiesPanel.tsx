@@ -1,10 +1,12 @@
 import { useEditor } from '../state/store'
 import {
-  BLEND_MODES, type Effect, type FlareLayer, type ImageLayer,
+  BLEND_MODES, type AdjustLayer, type Effect, type FlareLayer, type ImageLayer, type Layer,
   type ParticleLayer, type ShapeLayer, type TextLayer,
 } from '../types'
+import { defaultMask } from '../effects/mask'
 import { useEffect, useRef, useState } from 'react'
 import { EFFECT_DEFS, EFFECT_DEF_BY_TYPE, type ParamSpec } from '../effects/registry'
+import { PRESETS } from '../effects/presets'
 import { FLARE_PRESET_OPTIONS, getFlareElements } from '../effects/flare'
 import { FONTS, onFontsChanged, registerCustomFont } from '../fonts/fonts'
 
@@ -168,6 +170,8 @@ export function PropertiesPanel() {
         </select>
       </label>
 
+      <MaskControls layer={layer} />
+
       {layer.type === 'image' && (
         <>
           <ImageControls layer={layer} onAdjust={updateAdjustments} onChange={updateLayer} />
@@ -186,14 +190,61 @@ export function PropertiesPanel() {
       {layer.type === 'particle' && (
         <ParticleControls layer={layer} onChange={updateLayer} />
       )}
+      {layer.type === 'adjust' && (
+        <AdjustLayerControls layer={layer} onAdjust={updateAdjustments} />
+      )}
     </div>
+  )
+}
+
+function AdjustLayerControls({
+  layer,
+  onAdjust,
+}: {
+  layer: AdjustLayer
+  onAdjust: (id: string, patch: Partial<AdjustLayer['adjustments']>) => void
+}) {
+  const a = layer.adjustments
+  const set = (patch: Partial<AdjustLayer['adjustments']>) => onAdjust(layer.id, patch)
+  return (
+    <>
+      <div className="empty" style={{ padding: '2px 4px' }}>
+        Grades every layer below. Add grain, halftone or vignette here to texture the whole cover.
+      </div>
+      <PresetPicker layerId={layer.id} />
+      <Section title="Adjustments">
+        <Slider label="Brightness" value={a.brightness} min={-1} max={1} step={0.01} def={0} onChange={(v) => set({ brightness: v })} />
+        <Slider label="Contrast" value={a.contrast} min={-100} max={100} step={1} def={0} onChange={(v) => set({ contrast: v })} />
+        <Slider label="Saturation" value={a.saturation} min={-2} max={10} step={0.05} def={0} onChange={(v) => set({ saturation: v })} />
+        <Slider label="Hue" value={a.hue} min={0} max={360} step={1} def={0} onChange={(v) => set({ hue: v })} />
+        <Slider label="Luminance" value={a.luminance} min={-1} max={1} step={0.01} def={0} onChange={(v) => set({ luminance: v })} />
+        <Slider label="Blur" value={a.blur} min={0} max={100} step={1} def={0} onChange={(v) => set({ blur: v })} />
+        <label className="ctrl inline">
+          <input type="checkbox" checked={a.grayscale >= 0.5} onChange={(e) => set({ grayscale: e.target.checked ? 1 : 0 })} />
+          <span>Grayscale</span>
+        </label>
+        <label className="ctrl inline">
+          <input type="checkbox" checked={a.sepia >= 0.5} onChange={(e) => set({ sepia: e.target.checked ? 1 : 0 })} />
+          <span>Sepia</span>
+        </label>
+      </Section>
+      <Section title="Tone" defaultOpen={false}>
+        <Slider label="Highlights" value={a.highlights} min={-100} max={100} step={1} def={0} onChange={(v) => set({ highlights: v })} />
+        <Slider label="Shadows" value={a.shadows} min={-100} max={100} step={1} def={0} onChange={(v) => set({ shadows: v })} />
+        <Slider label="Whites" value={a.whites} min={-100} max={100} step={1} def={0} onChange={(v) => set({ whites: v })} />
+        <Slider label="Blacks" value={a.blacks} min={-100} max={100} step={1} def={0} onChange={(v) => set({ blacks: v })} />
+        <Slider label="Vibrance" value={a.vibrance} min={-100} max={100} step={1} def={0} onChange={(v) => set({ vibrance: v })} />
+        <Slider label="Dehaze" value={a.dehaze} min={0} max={100} step={1} def={0} onChange={(v) => set({ dehaze: v })} />
+      </Section>
+      <EffectsSection layer={layer} />
+    </>
   )
 }
 
 function AlignControls({ layer }: { layer: { id: string; type: string } }) {
   const alignLayer = useEditor((s) => s.alignLayer)
-  // Flares (light source point) and particles (scatter offset) have no box.
-  if (layer.type === 'flare' || layer.type === 'particle') return null
+  // Flares, particles and adjustment layers have no meaningful box.
+  if (layer.type === 'flare' || layer.type === 'particle' || layer.type === 'adjust') return null
   const b = (mode: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom', label: string, title: string) => (
     <button className="align-btn" title={title} onClick={() => alignLayer(layer.id, mode)}>{label}</button>
   )
@@ -207,6 +258,131 @@ function AlignControls({ layer }: { layer: { id: string; type: string } }) {
         {b('vcenter', '↕', 'Center vertically')}
         {b('bottom', '⤓', 'Bottom edge')}
       </div>
+    </Section>
+  )
+}
+
+function PresetPicker({ layerId }: { layerId: string }) {
+  const applyPreset = useEditor((s) => s.applyPreset)
+  return (
+    <Section title="Style Presets">
+      <div className="ctrl">
+        <select
+          value=""
+          onChange={(e) => {
+            const p = PRESETS.find((x) => x.id === e.target.value)
+            if (p) applyPreset(layerId, p)
+            e.target.value = ''
+          }}
+        >
+          <option value="">Apply a look…</option>
+          {PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="empty" style={{ padding: '2px 4px' }}>
+        Replaces adjustments &amp; effects. Undo (Ctrl+Z) reverts.
+      </div>
+    </Section>
+  )
+}
+
+function MaskControls({ layer }: { layer: Layer }) {
+  const updateLayer = useEditor((s) => s.updateLayer)
+  const maskEditId = useEditor((s) => s.maskEditId)
+  const setMaskEdit = useEditor((s) => s.setMaskEdit)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const mask = layer.mask
+  const enabled = !!mask?.enabled
+  const editing = maskEditId === layer.id
+
+  const setMask = (patch: Partial<NonNullable<Layer['mask']>>) =>
+    updateLayer(layer.id, { mask: { ...(mask ?? defaultMask()), ...patch } })
+
+  const onToggle = (on: boolean) => {
+    if (on) updateLayer(layer.id, { mask: mask ? { ...mask, enabled: true } : defaultMask() })
+    else {
+      if (editing) setMaskEdit(null)
+      updateLayer(layer.id, { mask: mask ? { ...mask, enabled: false } : undefined })
+    }
+  }
+
+  const onUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (f) setMask({ type: 'image', src: URL.createObjectURL(f) })
+    e.target.value = ''
+  }
+
+  const resetMaskTransform = () =>
+    setMask({ x: 0, y: 0, width: 0, height: 0, rotation: 0, scaleX: 1, scaleY: 1 })
+
+  return (
+    <Section title="Layer Mask" defaultOpen={false}>
+      <Toggle label="Enable mask" checked={enabled} onChange={onToggle} />
+      {enabled && mask && (
+        <>
+          <label className="ctrl">
+            <span className="ctrl-label">Applies to</span>
+            <select value={mask.target} onChange={(e) => setMask({ target: e.target.value as never })}>
+              <option value="self">This layer only</option>
+              <option value="below">This + all below</option>
+            </select>
+          </label>
+          <label className="ctrl">
+            <span className="ctrl-label">Type</span>
+            <select value={mask.type} onChange={(e) => setMask({ type: e.target.value as never })}>
+              <option value="linear">Linear gradient</option>
+              <option value="radial">Radial gradient</option>
+              <option value="image">Image</option>
+            </select>
+          </label>
+          <Toggle label="Invert" checked={mask.invert} onChange={(v) => setMask({ invert: v })} />
+
+          {mask.type === 'linear' && (
+            <>
+              <Slider label="Angle" value={mask.angle} min={0} max={360} step={1} def={90} onChange={(v) => setMask({ angle: v })} />
+              <Slider label="Fade start" value={mask.start} min={0} max={1} step={0.01} def={0.25} onChange={(v) => setMask({ start: v })} />
+              <Slider label="Fade end" value={mask.end} min={0} max={1} step={0.01} def={0.75} onChange={(v) => setMask({ end: v })} />
+            </>
+          )}
+          {mask.type === 'radial' && (
+            <>
+              <Slider label="Center X" value={mask.cx} min={0} max={1} step={0.01} def={0.5} onChange={(v) => setMask({ cx: v })} />
+              <Slider label="Center Y" value={mask.cy} min={0} max={1} step={0.01} def={0.5} onChange={(v) => setMask({ cy: v })} />
+              <Slider label="Radius" value={mask.radius} min={0.05} max={1.2} step={0.01} def={0.5} onChange={(v) => setMask({ radius: v })} />
+              <Slider label="Solid center" value={mask.start} min={0} max={0.99} step={0.01} def={0.25} onChange={(v) => setMask({ start: v })} />
+            </>
+          )}
+          {mask.type === 'image' && (
+            <>
+              <div className="ctrl">
+                <button onClick={() => fileRef.current?.click()}>
+                  {mask.src ? 'Replace mask image…' : 'Upload mask image…'}
+                </button>
+                <input ref={fileRef} type="file" accept="image/*" hidden onChange={onUpload} />
+              </div>
+              {mask.src && (
+                <>
+                  <Toggle
+                    label="Edit mask on canvas (move / scale / rotate)"
+                    checked={editing}
+                    onChange={(v) => setMaskEdit(v ? layer.id : null)}
+                  />
+                  {editing && (
+                    <div className="ctrl">
+                      <button onClick={resetMaskTransform}>Reset mask position</button>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="empty" style={{ padding: '2px 4px' }}>
+                White = visible, black = hidden. Area outside the mask image is hidden.
+              </div>
+            </>
+          )}
+        </>
+      )}
     </Section>
   )
 }
@@ -225,6 +401,8 @@ function ImageControls({
     onAdjust(layer.id, patch)
   return (
     <>
+      <PresetPicker layerId={layer.id} />
+
       <Section title="Adjustments">
         <Slider label="Brightness" value={a.brightness} min={-1} max={1} step={0.01} def={0} onChange={(v) => set({ brightness: v })} />
         <Slider label="Contrast" value={a.contrast} min={-100} max={100} step={1} def={0} onChange={(v) => set({ contrast: v })} />
@@ -375,6 +553,14 @@ function TextControls({
       </Section>
 
       <Section title="Shape & Perspective" defaultOpen={false}>
+        <label className="ctrl">
+          <span className="ctrl-label">Curve Style</span>
+          <select value={layer.curveStyle ?? 'arc'} onChange={(e) => set({ curveStyle: e.target.value as never })}>
+            <option value="arc">Arc</option>
+            <option value="circle">Circle</option>
+            <option value="wave">Wave</option>
+          </select>
+        </label>
         <Slider label="Curve" value={layer.curve} min={-100} max={100} step={1} def={0} onChange={(v) => set({ curve: v })} />
         <Slider label="Tilt X" value={layer.skewX} min={-1} max={1} step={0.02} def={0} onChange={(v) => set({ skewX: v })} />
         <Slider label="Tilt Y" value={layer.skewY} min={-1} max={1} step={0.02} def={0} onChange={(v) => set({ skewY: v })} />
@@ -609,7 +795,7 @@ function ParticleControls({ layer, onChange }: { layer: ParticleLayer; onChange:
   )
 }
 
-function EffectsSection({ layer }: { layer: ImageLayer }) {
+function EffectsSection({ layer }: { layer: ImageLayer | AdjustLayer }) {
   const addEffect = useEditor((s) => s.addEffect)
   const removeEffect = useEditor((s) => s.removeEffect)
   const toggleEffect = useEditor((s) => s.toggleEffect)

@@ -1,7 +1,7 @@
 // Core domain model for the editor.
 // The whole document is serializable to JSON for save/load and export/import.
 
-export type LayerType = 'image' | 'text' | 'shape' | 'flare' | 'particle'
+export type LayerType = 'image' | 'text' | 'shape' | 'flare' | 'particle' | 'adjust'
 
 // Konva globalCompositeOperation values we expose as blend modes.
 export type BlendMode =
@@ -45,6 +45,41 @@ export interface ImageAdjustments {
   structure: number //   0 .. 100
 }
 
+// ---- Layer mask -----------------------------------------------------------
+// A black/white mask (white = visible, black = hidden) applied via
+// destination-in compositing. `target` decides whether it clips just this layer
+// or this layer plus everything stacked below it.
+export type MaskType = 'linear' | 'radial' | 'image'
+export type MaskTarget = 'self' | 'below'
+
+export interface LayerMask {
+  enabled: boolean
+  type: MaskType
+  target: MaskTarget
+  invert: boolean
+  // Linear gradient: direction + the fade band (keep-side edge → hide-side edge)
+  // as fractions along that direction.
+  angle: number
+  start: number // 0..1
+  end: number // 0..1
+  // Radial gradient: center + outer radius as fractions of the canvas; `start`
+  // doubles as the fully-kept inner fraction.
+  cx: number
+  cy: number
+  radius: number
+  // Image mask: a grayscale picture whose luminance drives the mask.
+  src?: string
+  // Image-mask transform in document pixels. Undefined / zero size = fill the
+  // canvas. Lets the user move, scale and rotate the mask picture.
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  rotation?: number
+  scaleX?: number
+  scaleY?: number
+}
+
 export interface BaseLayer {
   id: string
   type: LayerType
@@ -53,6 +88,8 @@ export interface BaseLayer {
   locked: boolean // when true, the layer can't be dragged or transformed
   opacity: number // 0 .. 1
   blendMode: BlendMode
+  // Optional black/white mask. Undefined = no mask.
+  mask?: LayerMask
   // Transform — position is the layer's own coordinates on the stage.
   x: number
   y: number
@@ -114,6 +151,7 @@ export interface TextLayer extends BaseLayer {
   letterSpacing: number
   width?: number // optional wrap width
   curve: number // -100..100 arc bend (0 = straight); nonzero renders on a path
+  curveStyle?: 'arc' | 'circle' | 'wave' // how curve bends the baseline
   skewX: number // perspective tilt
   skewY: number
   // Stroke (outline)
@@ -216,7 +254,23 @@ export interface ParticleLayer extends BaseLayer {
   seed: number
 }
 
-export type Layer = ImageLayer | TextLayer | ShapeLayer | FlareLayer | ParticleLayer
+// ---- Adjustment layer -----------------------------------------------------
+// A geometry-less layer that grades everything stacked below it: the same
+// adjustments + creative effect stack as an image layer, applied globally.
+// Also the way to lay grain / halftone / vignette over the whole composition.
+export interface AdjustLayer extends BaseLayer {
+  type: 'adjust'
+  adjustments: ImageAdjustments
+  effects: Effect[]
+}
+
+export type Layer =
+  | ImageLayer
+  | TextLayer
+  | ShapeLayer
+  | FlareLayer
+  | ParticleLayer
+  | AdjustLayer
 
 export interface CanvasDoc {
   width: number

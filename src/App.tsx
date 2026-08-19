@@ -20,6 +20,61 @@ export default function App() {
     if (needsRestore) setShowRestore(true)
   }, [])
 
+  // Editor keyboard shortcuts. Ignored while typing in a form field so text
+  // editing keeps its native behaviour.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return
+
+      const state = useEditor.getState()
+      const ctrl = e.ctrlKey || e.metaKey
+
+      // Undo / redo
+      if (ctrl && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) state.redo()
+        else state.undo()
+        return
+      }
+      if (ctrl && e.key.toLowerCase() === 'y') {
+        e.preventDefault()
+        state.redo()
+        return
+      }
+
+      const id = state.selectedId
+      if (!id) return
+      const layer = state.layers.find((l) => l.id === id)
+
+      // Duplicate
+      if (ctrl && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        state.duplicateLayer(id)
+        return
+      }
+      // Delete
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !ctrl) {
+        e.preventDefault()
+        state.removeLayer(id)
+        return
+      }
+      // Arrow-key nudge (Shift = larger step). Locked layers stay put.
+      const nudges: Record<string, [number, number]> = {
+        ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+      }
+      const dir = nudges[e.key]
+      if (dir && layer && !layer.locked) {
+        e.preventDefault()
+        const step = e.shiftKey ? 50 : 10
+        state.updateLayer(id, { x: layer.x + dir[0] * step, y: layer.y + dir[1] * step })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   return (
     <div className="app">
       <Toolbar stageRef={stageRef} />
